@@ -65,11 +65,8 @@ def main():
 		print("Could not login. Bailing out.")
 		sys.exit()
 	try:		
-		#update_temperature_forecast_feature_layer(conn = conn, feature_layer_name = forecast_first_day_feature_layer_name,  shapefile = conus_max_temp_forecast_first_day_poly_zip_filename,  day=0)
-		#update_temperature_forecast_feature_layer(conn = conn, feature_layer_name = forecast_second_day_feature_layer_name, shapefile = conus_max_temp_forecast_second_day_poly_zip_filename, day=1)
-		#update_temperature_forecast_feature_layer(conn = conn, feature_layer_name = forecast_third_day_feature_layer_name,  shapefile = conus_max_temp_forecast_third_day_poly_zip_filename,  day=2)
-		
-		#update_covid19_cases_feature_layer(conn = conn, feature_layer_name = covid19_cases_feature_layer_name, shapefile = covid19_cases_zip_filename, day=1)
+
+		update_covid19_cases_feature_layer2(conn = conn)
 		update_heat_index_forecast_feature_layer(conn = conn, day=0)
 	except Exception as inst:
 		print(type(inst))    # the exception instance

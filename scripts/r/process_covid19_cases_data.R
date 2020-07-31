@@ -1,3 +1,5 @@
+#PROCESS CONUS COVID CASES
+
 rm(list=ls())
 # Start the clock!
 ptm <- proc.time()
@@ -19,6 +21,7 @@ library(foreign)
 
 root.dir   <- "D:/Users/climate_dashboard/Documents/climate_dashboard"
 today <- format(as.Date(Sys.Date()), "%m-%d-%Y")
+maxhi.dir <- "D:\\Users\\climate_dashboard\\Documents\\climate_dashboard\\data\\tmp\\HI_forecast" 
 
 #source("D:\\Users\\climate_dashboard\\Documents\\climate_dashboard\\scripts\\r\\course.R")
 #logger config
@@ -26,7 +29,7 @@ log.filename <- paste(root.dir, "\\log\\process_covid19_cases_data_", today,".lo
 logReset()
 basicConfig(level='FINEST')
 addHandler(writeToFile, file=log.filename, level='DEBUG')
-log.msg <- "\n\n----------Process Starting: Process COVID-19 cases data"
+log.msg <- "\n\n----------Process Starting: Process CONUS COVID-19 cases data"
 loginfo('%s', log.msg)
 
 yesterday <- format(as.Date(Sys.Date() - 1), "%m-%d-%Y")
@@ -42,6 +45,8 @@ shp.extensions = c("dbf", "prj", "sbn", "sbx", "shp", "shx")
 states.fips.loookup.df <- read.dbf(paste(input.dir,"/state_fips_lookup_table.dbf",sep=""))
 colnames(states.fips.loookup.df)[3] <- "STATE_FIPS"
 medicaid.expansion.df <- read.dbf(paste(input.dir,"/medicaid_expansion.dbf",sep=""))
+maxhi.current.sp <- foreign::read.dbf(paste(maxhi.dir, "/maxhi_counties_summary.dbf", sep=""))
+covid_and_mobility_trends <- foreign::read.dbf("D:\\Users\\climate_dashboard\\Documents\\climate_dashboard\\data\\output_files\\county_level_risk\\county_covid_and_mobility_trends_poly.dbf")
 
 cdc.svi        <- readOGR(dsn=paste(input.dir, "/SVI", sep=""), layer="SVI2016_US_COUNTY")
 cdc.svi.fields <- c("FIPS", "EP_POV", "EP_AGE65", "EP_DISABL", "EP_MINRTY", "EP_LIMENG", "RPL_THEME1", "RPL_THEME2", "RPL_THEME3", "RPL_THEME4", "RPL_THEMES")
@@ -86,7 +91,15 @@ tryCatch(
 #unzip it
 #replace with unzipped csv
 covid19.cases.filename <- utils::unzip(covid19.github.zip.local.file, files = covid19.cases.filename, exdir = tmp.dir, overwrite = T)
-
+if(length(covid19.cases.filename)==0)
+{
+  log.msg <-paste("Updated file for ", today, " not in archive; skipping rest of COVID-19 cases update.",sep="")
+  loginfo('%s', log.msg)
+  log.msg <- "\n\n----------Process Ending: Process COVID-19 cases data"
+  loginfo('%s', log.msg)
+  stop()
+ 
+}
 log.msg <- paste("Unzipping ", covid19.github.zip.local.file, sep="")
 loginfo('%s', log.msg)
 
@@ -121,21 +134,73 @@ tryCatch(expr=
              colnames(confirmed.cases.by.county) <- c("FIPS", "Confirmed", "county.frequency")
              conus.counties.sp <- merge(conus.counties.sp,confirmed.cases.by.county, by.x = "GEOID", by.y = "FIPS")
              
+             #join covid and mobility trends data
+             rows <- c(4:25)
+             conus.counties.sp <- merge(conus.counties.sp,covid_and_mobility_trends[,rows], by.x = "GEOID_dbl", by.y = "GEOID_dbl")
            },
          error= function(e)
          {
-           log.msg <- paste("Join error. Bailing.")
+           log.msg <- paste("covid cases Join error. Bailing.")
            logerror('%s', log.msg)
            stop()
          }
 )
 
+#join max heat index to counties
+log.msg <- "Joining daily max and mean heat index forecast to counties"
+loginfo('%s', log.msg)
+tryCatch(expr=
+           {
+            #joining daily max heat index to counties
+            #first project maxhi to the counties projection
+            #maxhi.current.sp.xformed <- spTransform(maxhi.current.sp, CRSobj = crs(conus.counties.sp))
+            #intersect maxhi and counties 
+            #conus.counties.heat.index.intersect <- raster::intersect(conus.counties.sp,maxhi.current.sp.xformed)
+            
+            #convert factor to numeric
+            #conus.counties.heat.index.intersect@data$MAX_gridcode <- as.numeric(as.character(conus.counties.heat.index.intersect@data$MAX_gridcode)) 
+            
+            #get maxhi gridcode value by county
+            #maxhi.max.by.counties  <- doBy::summaryBy(MAX_gridcode ~ GEOID, data = conus.counties.heat.index.intersect@data, FUN=max, rm.na=T)
+            #maxhi.mean.by.counties <- doBy::summaryBy(MAX_gridcode ~ GEOID, data = conus.counties.heat.index.intersect@data, FUN=mean, rm.na=T)
+            
+            #rename columns to shapefile-friendly names
+            #colnames(maxhi.max.by.counties)[2]  <- "maxhi"
+            #colnames(maxhi.mean.by.counties)[2] <- "meanhi"
+            
+            #cast to integer to save space
+            #maxhi.max.by.counties$meanhi  <- as.integer(maxhi.max.by.counties$maxhi)
+            #maxhi.mean.by.counties$meanhi <- as.integer(maxhi.mean.by.counties$meanhi)
+            
+            #join back to counties shapefile
+            conus.counties.sp <- merge(conus.counties.sp,maxhi.current.sp,  by.x="GEOID_dbl", by.y = "GEOID_dbl") 
+            
+            #subset counties with
+            #HI >=100
+            #increasing covid cases trend
+            hi.threshold <- 100
+            cases.trend <- "increasing"
+            conus.counties.sp2 <- conus.counties.sp[conus.counties.sp@data$MAX_gridco >= hi.threshold & conus.counties.sp@data$cases_trnd ==cases.trend, ]
+           },
+         error= function(e)
+         {
+           log.msg <- paste("heat index Join error. Bailing.")
+           logerror('%s', log.msg)
+           stop()
+         }
+)
+
+
 tryCatch(expr=
             {
               log.msg <- paste("Writing ",output.dir,"/", conus_covid19_cases_counties, sep="")
               loginfo('%s', log.msg)
+              #write final shapefile
               writeOGR(obj=conus.counties.sp,dsn=output.dir,layer=conus_covid19_cases_counties, driver ="ESRI Shapefile",overwrite_layer = T )
-            
+              conus_covid19_cases_counties_subset <- "conus_covid19_cases_counties_subset"
+              writeOGR(obj=conus.counties.sp2,dsn=output.dir,layer=conus_covid19_cases_counties, driver ="ESRI Shapefile",overwrite_layer = T )
+              
+              #zip for AGOL update
               conus.covid19.cases.counties.zip.filename <- paste(output.dir,"/", conus_covid19_cases_counties, ".zip",sep="")
               log.msg <- paste("Zipping ",conus.covid19.cases.counties.zip.filename, sep="")
               
@@ -155,5 +220,7 @@ tryCatch(expr=
 log.msg <- "\n\n----------Process Ending: Process COVID-19 cases data"
 loginfo('%s', log.msg)
 #print(proc.time() - ptm)
+
+
 
 

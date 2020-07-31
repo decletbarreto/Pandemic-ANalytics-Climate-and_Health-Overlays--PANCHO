@@ -93,7 +93,7 @@ loginfo('%s', log.msg)
 covid19.df <- read.csv(covid19.cases.filename)
 
 #subset US cases
-log.msg <- "Subsetting US cases and padding FIPS column..."
+log.msg <- "Subsetting PR cases and padding FIPS column..."
 loginfo('%s', log.msg)
 conus.covid19.df <- covid19.df[which(covid19.df$Country_Region=="US"),]
 #pad FIPS with zero if needed
