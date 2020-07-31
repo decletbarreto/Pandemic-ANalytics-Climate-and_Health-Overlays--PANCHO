@@ -1,1 +1,0 @@
- "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe" "a:\climate_dashboard\scripts\python\upload_shapefiles.py"
